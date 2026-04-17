@@ -2,9 +2,9 @@ from typing_extensions import Annotated, List, Optional
 from ninja import FilterLookup, NinjaAPI, Query, Schema, FilterSchema, File
 from django.shortcuts import get_object_or_404
 from .models import Genre, Author, Book, Rating
-from datetime import datetime
 from django.db.models import Q
 from ninja.files import UploadedFile
+from ninja.pagination import paginate, PageNumberPagination, CursorPagination
 
 class BookFilterSchema(FilterSchema):
     title: Annotated[Optional[str], FilterLookup("title__icontains")] = None
@@ -63,7 +63,7 @@ class BookOut(Schema):
     genre: Genre
     published_year: Optional[int] = None
     rating: Rating
-    image: Optional[str] = None
+    image: str = None
     page_count: Optional[int] = None
 
 @staticmethod
@@ -100,10 +100,10 @@ def delete_author(request, author_id: int):
     return {"success": True}
 
 @api.post("/books", response=BookOut, tags=["Books"])
-def create_book(request, payload: BookIn, image: UploadedFile = File(None)):
+def create_book(request, payload: BookIn, image: File[UploadedFile]= None):
     book = Book.objects.create(**payload.dict())
     if image:
-        book.image = image
+        book.image.save(image.name, image)
     return book
 
 @api.get("/books/{book_id}", response=BookOut, tags=["Books"])
@@ -111,20 +111,24 @@ def get_book(request, book_id: int):
     return get_object_or_404(Book, id=book_id)
 
 @api.get("/books", response=List[BookOut], tags=["Books"])
+@paginate
+def list_books(request, filters: Query[BookFilterSchema]):
+    books = Book.objects.all()
+    books = filters.filter(books)
+    return books
+
+@api.get("/books", response=List[BookOut], tags=["Books"])
+@paginate(PageNumberPagination)
 def list_books(request, filters: Query[BookFilterSchema]):
     books = Book.objects.all()
     books = filters.filter(books)
     return books
 
 @api.put("/books/{book_id}", tags=["Books"])
-def update_book(request, book_id: int, payload: BookIn, image: UploadedFile = File(None)):
+def update_book(request, book_id: int, payload: BookIn):
     book = get_object_or_404(Book, id=book_id)
     for attr, value in payload.dict().items():
         setattr(book, attr, value)
-    if image:
-        if book.image:
-            book.image.delete(save=False)
-        book.image = image
     book.save()
     return {"success": True}
 
