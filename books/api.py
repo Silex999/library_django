@@ -1,17 +1,21 @@
-from typing_extensions import Annotated, List, Optional
+from typing import List, Optional
+from typing_extensions import Annotated
 from ninja import FilterLookup, NinjaAPI, Query, Schema, FilterSchema, File
+from ninja import Router
+from ninja.files import UploadedFile
+from ninja.pagination import LimitOffsetPagination, paginate, PageNumberPagination, CursorPagination
 from django.shortcuts import get_object_or_404
 from .models import Genre, Author, Book, Rating
-from django.db.models import Q
-from ninja.files import UploadedFile
-from ninja.pagination import paginate, PageNumberPagination, CursorPagination
+
+router = Router()
+
+api = NinjaAPI()
+api.add_router("", router)
 
 class BookFilterSchema(FilterSchema):
     title: Annotated[Optional[str], FilterLookup("title__icontains")] = None
-
     published_year_from: Annotated[Optional[int], FilterLookup("published_year__gte")] = None
     published_year_to: Annotated[Optional[int], FilterLookup("published_year__lte")] = None
-
     author_name: Annotated[
         Optional[str],
         FilterLookup([
@@ -20,15 +24,10 @@ class BookFilterSchema(FilterSchema):
             "author__patronymic__icontains",
         ])
     ] = None
-
     author_id: Annotated[Optional[int], FilterLookup("author__id")] = None
-
     page_count_from: Annotated[Optional[int], FilterLookup("page_count__gte")] = None
     page_count_to: Annotated[Optional[int], FilterLookup("page_count__lte")] = None
-
     genre: Annotated[Optional[str], FilterLookup("genre")] = None
-
-api = NinjaAPI()
 
 class GenreIn(Schema):
     name: str
@@ -66,26 +65,25 @@ class BookOut(Schema):
     image: str = None
     page_count: Optional[int] = None
 
-@staticmethod
-def resolve_image(obj):
-    if obj.image:
-        return obj.image.url
-    return None
+    @staticmethod
+    def resolve_image(obj):
+        if obj.image:
+            return obj.image.url
+        return None
 
-@api.post("/authors", response=AuthorOut, tags=["Authors"])
+@router.post("/authors", response=AuthorOut, tags=["Authors"])
 def create_author(request, payload: AuthorIn):
-    author = Author.objects.create(**payload.dict())
-    return author
+    return Author.objects.create(**payload.dict())
 
-@api.get("/authors/{author_id}", response=AuthorOut, tags=["Authors"])
+@router.get("/authors/{author_id}", response=AuthorOut, tags=["Authors"])
 def get_author(request, author_id: int):
     return get_object_or_404(Author, id=author_id)
 
-@api.get("/authors", response=List[AuthorOut], tags=["Authors"])
+@router.get("/authors", response=List[AuthorOut], tags=["Authors"])
 def list_authors(request):
     return Author.objects.all()
 
-@api.put("/authors/{author_id}", tags=["Authors"])
+@router.put("/authors/{author_id}", tags=["Authors"])
 def update_author(request, author_id: int, payload: AuthorIn):
     author = get_object_or_404(Author, id=author_id)
     for attr, value in payload.dict().items():
@@ -93,38 +91,43 @@ def update_author(request, author_id: int, payload: AuthorIn):
     author.save()
     return {"success": True}
 
-@api.delete("/authors/{author_id}", tags=["Authors"])
+@router.delete("/authors/{author_id}", tags=["Authors"])
 def delete_author(request, author_id: int):
-    author = get_object_or_404(Author, id=author_id)
-    author.delete()
+    get_object_or_404(Author, id=author_id).delete()
     return {"success": True}
 
-@api.post("/books", response=BookOut, tags=["Books"])
-def create_book(request, payload: BookIn, image: File[UploadedFile]= None):
+@router.post("/books", response=BookOut, tags=["Books"])
+def create_book(request, payload: BookIn, image: File[UploadedFile] = None):
     book = Book.objects.create(**payload.dict())
     if image:
         book.image.save(image.name, image)
     return book
 
-@api.get("/books/{book_id}", response=BookOut, tags=["Books"])
+@router.get("/books/{book_id}", response=BookOut, tags=["Books"])
 def get_book(request, book_id: int):
     return get_object_or_404(Book, id=book_id)
 
-@api.get("/books", response=List[BookOut], tags=["Books"])
-@paginate
+@router.get("/books", response=List[BookOut], tags=["Books"])
+@paginate()
 def list_books(request, filters: Query[BookFilterSchema]):
-    books = Book.objects.all()
-    books = filters.filter(books)
-    return books
+    return filters.filter(Book.objects.all())
 
-@api.get("/books", response=List[BookOut], tags=["Books"])
+@router.get("/booksOP", response=List[BookOut], auth=None)
+@paginate(LimitOffsetPagination)
+def list_books_op(request, filters: BookFilterSchema = Query(...)):
+    return filters.filter(Book.objects.all())
+
+@router.get("/booksPNP", response=List[BookOut], auth=None)
 @paginate(PageNumberPagination)
-def list_books(request, filters: Query[BookFilterSchema]):
-    books = Book.objects.all()
-    books = filters.filter(books)
-    return books
+def list_books_pnp(request, filters: BookFilterSchema = Query(...)):
+    return filters.filter(Book.objects.all())
 
-@api.put("/books/{book_id}", tags=["Books"])
+@router.get("/booksCurs", response=List[BookOut])
+@paginate(CursorPagination)
+def list_books_curs(request, filters: BookFilterSchema = Query(...)):
+    return filters.filter(Book.objects.all())
+
+@router.put("/books/{book_id}", tags=["Books"])
 def update_book(request, book_id: int, payload: BookIn):
     book = get_object_or_404(Book, id=book_id)
     for attr, value in payload.dict().items():
@@ -132,8 +135,7 @@ def update_book(request, book_id: int, payload: BookIn):
     book.save()
     return {"success": True}
 
-@api.delete("/books/{book_id}", tags=["Books"])
+@router.delete("/books/{book_id}", tags=["Books"])
 def delete_book(request, book_id: int):
-    book = get_object_or_404(Book, id=book_id)
-    book.delete()
+    get_object_or_404(Book, id=book_id).delete()
     return {"success": True}

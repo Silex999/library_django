@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'books',
+    'films',
 ]
 
 MIDDLEWARE = [
@@ -127,4 +128,4 @@ MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 NINJA_PAGINATION_PER_PAGE = 2
-PAGINATION_MAX_PER_PAGE_SIZE = 2
+PAGINATION_MAX_PER_PAGE_SIZE = 1
