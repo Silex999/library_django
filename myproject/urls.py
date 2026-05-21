@@ -21,10 +21,12 @@ from django.conf import settings
 from django.conf.urls.static import static
 from films.api import router as films_router
 from books.api import router as books_router
+from library_auth import AuthBearer, router as auth_router
 
-api = NinjaAPI()
+api = NinjaAPI(auth=AuthBearer())
 api.add_router("/films", films_router)
 api.add_router("/books", books_router) 
+api.add_router("/auth", auth_router)
 
 urlpatterns = [
     path("admin/", admin.site.urls),

@@ -2,9 +2,13 @@ from datetime import date
 from typing import List, Optional
 from ninja import Router, Schema, File, UploadedFile
 from django.shortcuts import get_object_or_404
+from django.http import HttpRequest
+from ninja.errors import HttpError
 from .models import Person, Film, Studio, Media, Review
+from myproject.permissions import is_admin, is_moderator
 
 router = Router(tags=["Films"])
+
 
 class PersonIn(Schema):
     first_name: str
@@ -66,30 +70,48 @@ class ReviewOut(Schema):
     author: PersonOut
     text: str
 
+class FilmPatch(Schema):
+    title: Optional[str] = None
+    release_date: Optional[date] = None
+    studio_id: Optional[int] = None
+    actors_id: Optional[List[int]] = None
+    directors_id: Optional[List[int]] = None
+    producers_id: Optional[List[int]] = None
+
+
 @router.post("/persons", tags=["Persons"])
-def create_person(request, payload: PersonIn):
+def create_person(request: HttpRequest, payload: PersonIn):
+    if not (is_admin(request.user) or is_moderator(request.user)):
+        raise HttpError(403, "Forbidden")
     person = Person.objects.create(**payload.dict())
     return {"id": person.id}
 
 @router.get("/persons", response=List[PersonOut], tags=["Persons"])
-def list_persons(request):
+def list_persons(request: HttpRequest):
     return Person.objects.all()
 
 @router.get("/persons/{person_id}", response=PersonOut, tags=["Persons"])
-def get_person(request, person_id: int):
+def get_person(request: HttpRequest, person_id: int):
     return get_object_or_404(Person, id=person_id)
 
+
 @router.post("/studios", tags=["Studios"])
-def create_studio(request, payload: StudioIn):
+def create_studio(request: HttpRequest, payload: StudioIn):
+    if not is_admin(request.user):
+        raise HttpError(403, "Forbidden")
     studio = Studio.objects.create(**payload.dict())
     return {"id": studio.id}
 
 @router.get("/studios", response=List[StudioOut], tags=["Studios"])
-def list_studios(request):
+def list_studios(request: HttpRequest):
     return Studio.objects.all()
 
+
 @router.post("/films", tags=["Films"])
-def create_film(request, payload: FilmIn):
+def create_film(request: HttpRequest, payload: FilmIn):
+    if not (is_admin(request.user) or is_moderator(request.user)):
+        raise HttpError(403, "Forbidden")
+
     data = payload.dict()
     actors_id = data.pop("actors_id")
     directors_id = data.pop("directors_id")
@@ -103,13 +125,13 @@ def create_film(request, payload: FilmIn):
     return {"id": film.id}
 
 @router.get("/films", response=List[FilmOut], tags=["Films"])
-def list_films(request):
+def list_films(request: HttpRequest):
     return Film.objects.prefetch_related(
         "actors", "directors", "producers", "media"
     ).select_related("studio").all()
 
 @router.get("/films/{film_id}", response=FilmOut, tags=["Films"])
-def get_film(request, film_id: int):
+def get_film(request: HttpRequest, film_id: int):
     return get_object_or_404(
         Film.objects.prefetch_related(
             "actors", "directors", "producers", "media"
@@ -117,36 +139,11 @@ def get_film(request, film_id: int):
         id=film_id
     )
 
-@router.post("/media", tags=["Media"])
-def create_media(request, payload: MediaIn, file: File[UploadedFile] = None):
-    media = Media.objects.create(**payload.dict())
-    if file:
-        media.file.save(file.name, file)
-    return {"id": media.id}
-
-@router.get("/media", response=List[MediaOut], tags=["Media"])
-def list_media(request):
-    return Media.objects.all()
-
-@router.post("/reviews", response=ReviewOut, tags=["Reviews"])
-def create_review(request, payload: ReviewIn):
-    review = Review.objects.create(
-        film_id=payload.film_id,
-        author_id=payload.author_id,
-        text=payload.text
-    )
-    return review
-
-@router.get("/reviews", response=List[ReviewOut], tags=["Reviews"])
-def list_reviews(request):
-    return Review.objects.select_related("author").all()
-
-@router.get("/reviews/{review_id}", response=ReviewOut, tags=["Reviews"])
-def get_review(request, review_id: int):
-    return get_object_or_404(Review.objects.select_related("author"), id=review_id)
-
 @router.put("/films/{film_id}", response=FilmOut, tags=["Films"])
-def update_film(request, film_id: int, payload: FilmIn):
+def update_film(request: HttpRequest, film_id: int, payload: FilmIn):
+    if not is_admin(request.user):
+        raise HttpError(403, "Forbidden")
+
     film = get_object_or_404(
         Film.objects.prefetch_related("actors", "directors", "producers", "media")
         .select_related("studio"),
@@ -168,16 +165,11 @@ def update_film(request, film_id: int, payload: FilmIn):
 
     return film
 
-class FilmPatch(Schema):
-    title: Optional[str] = None
-    release_date: Optional[date] = None
-    studio_id: Optional[int] = None
-    actors_id: Optional[List[int]] = None
-    directors_id: Optional[List[int]] = None
-    producers_id: Optional[List[int]] = None
-
 @router.patch("/films/{film_id}", response=FilmOut, tags=["Films"])
-def patch_film(request, film_id: int, payload: FilmPatch):
+def patch_film(request: HttpRequest, film_id: int, payload: FilmPatch):
+    if not (is_admin(request.user) or is_moderator(request.user)):
+        raise HttpError(403, "Forbidden")
+
     film = get_object_or_404(
         Film.objects.prefetch_related("actors", "directors", "producers", "media")
         .select_related("studio"),
@@ -203,7 +195,43 @@ def patch_film(request, film_id: int, payload: FilmPatch):
     return film
 
 @router.delete("/films/{film_id}", tags=["Films"])
-def delete_film(request, film_id: int):
+def delete_film(request: HttpRequest, film_id: int):
+    if not is_admin(request.user):
+        raise HttpError(403, "Forbidden")
     film = get_object_or_404(Film, id=film_id)
     film.delete()
     return {"success": True}
+
+
+@router.post("/media", tags=["Media"])
+def create_media(request: HttpRequest, payload: MediaIn, file: File[UploadedFile] = None):
+    if not (is_admin(request.user) or is_moderator(request.user)):
+        raise HttpError(403, "Forbidden")
+    media = Media.objects.create(**payload.dict())
+    if file:
+        media.file.save(file.name, file)
+    return {"id": media.id}
+
+@router.get("/media", response=List[MediaOut], tags=["Media"])
+def list_media(request: HttpRequest):
+    return Media.objects.all()
+
+
+@router.post("/reviews", response=ReviewOut, tags=["Reviews"])
+def create_review(request: HttpRequest, payload: ReviewIn):
+    if not request.user.is_authenticated:
+        raise HttpError(401)
+    review = Review.objects.create(
+        film_id=payload.film_id,
+        author_id=payload.author_id,
+        text=payload.text
+    )
+    return review
+
+@router.get("/reviews", response=List[ReviewOut], tags=["Reviews"])
+def list_reviews(request: HttpRequest):
+    return Review.objects.select_related("author").all()
+
+@router.get("/reviews/{review_id}", response=ReviewOut, tags=["Reviews"])
+def get_review(request: HttpRequest, review_id: int):
+    return get_object_or_404(Review.objects.select_related("author"), id=review_id)
