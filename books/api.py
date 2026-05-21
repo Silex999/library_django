@@ -9,9 +9,6 @@ from .models import Genre, Author, Book, Rating
 
 router = Router()
 
-api = NinjaAPI()
-api.add_router("", router)
-
 class BookFilterSchema(FilterSchema):
     title: Annotated[Optional[str], FilterLookup("title__icontains")] = None
     published_year_from: Annotated[Optional[int], FilterLookup("published_year__gte")] = None

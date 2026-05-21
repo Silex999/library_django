@@ -144,3 +144,66 @@ def list_reviews(request):
 @router.get("/reviews/{review_id}", response=ReviewOut, tags=["Reviews"])
 def get_review(request, review_id: int):
     return get_object_or_404(Review.objects.select_related("author"), id=review_id)
+
+@router.put("/films/{film_id}", response=FilmOut, tags=["Films"])
+def update_film(request, film_id: int, payload: FilmIn):
+    film = get_object_or_404(
+        Film.objects.prefetch_related("actors", "directors", "producers", "media")
+        .select_related("studio"),
+        id=film_id
+    )
+
+    data = payload.dict()
+    actors_id = data.pop("actors_id")
+    directors_id = data.pop("directors_id")
+    producers_id = data.pop("producers_id")
+
+    for attr, value in data.items():
+        setattr(film, attr, value)
+    film.save()
+
+    film.actors.set(actors_id)
+    film.directors.set(directors_id)
+    film.producers.set(producers_id)
+
+    return film
+
+class FilmPatch(Schema):
+    title: Optional[str] = None
+    release_date: Optional[date] = None
+    studio_id: Optional[int] = None
+    actors_id: Optional[List[int]] = None
+    directors_id: Optional[List[int]] = None
+    producers_id: Optional[List[int]] = None
+
+@router.patch("/films/{film_id}", response=FilmOut, tags=["Films"])
+def patch_film(request, film_id: int, payload: FilmPatch):
+    film = get_object_or_404(
+        Film.objects.prefetch_related("actors", "directors", "producers", "media")
+        .select_related("studio"),
+        id=film_id
+    )
+
+    data = payload.dict(exclude_none=True)
+    actors_id = data.pop("actors_id", None)
+    directors_id = data.pop("directors_id", None)
+    producers_id = data.pop("producers_id", None)
+
+    for attr, value in data.items():
+        setattr(film, attr, value)
+    film.save()
+
+    if actors_id is not None:
+        film.actors.set(actors_id)
+    if directors_id is not None:
+        film.directors.set(directors_id)
+    if producers_id is not None:
+        film.producers.set(producers_id)
+
+    return film
+
+@router.delete("/films/{film_id}", tags=["Films"])
+def delete_film(request, film_id: int):
+    film = get_object_or_404(Film, id=film_id)
+    film.delete()
+    return {"success": True}

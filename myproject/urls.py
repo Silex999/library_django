@@ -15,12 +15,16 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.db import router
 from django.urls import path
 from ninja import NinjaAPI
-from books.api import api
 from django.conf import settings
 from django.conf.urls.static import static
+from films.api import router as films_router
+from books.api import router as books_router
+
+api = NinjaAPI()
+api.add_router("/films", films_router)
+api.add_router("/books", books_router) 
 
 urlpatterns = [
     path("admin/", admin.site.urls),
